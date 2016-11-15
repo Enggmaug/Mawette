@@ -25,65 +25,91 @@
 // Duemilanove, etc., pin 11 = MOSI, pin 12 = MISO, pin 13 = SCK.
 
 #define TFT_DC      15
-#define TFT_CS      10
+#define CS_TFT      10
 #define TFT_RST     4  // 255 = unused, connect to 3.3V
-#define TFT_MOSI    11
-#define TFT_SCLK    13
-#define TFT_MISO    12
+#define SPI_MOSI    11
+#define SPI_SCLK    13
+#define SPI_MISO    12
 
-#define RST_PIN         17          // Configurable, see typical pin layout above
-#define SS_PIN          20         // Configurable, see typical pin layout above
+#define RFID_RST         17          // Configurable, see typical pin layout above
+#define CS_RFID          20         // Configurable, see typical pin layout above
 
-#define SD_CS 9
+#define CS_SD 9
 
-ILI9341_t3 tft = ILI9341_t3(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCLK, TFT_MISO);
-MFRC522 mfrc522(SS_PIN, RST_PIN);  // Create MFRC522 instance
+ILI9341_t3 tft = ILI9341_t3(CS_TFT, TFT_DC, TFT_RST, SPI_MOSI, SPI_SCLK, SPI_MISO);
+MFRC522 mfrc522(CS_RFID, RFID_RST);  // Create MFRC522 instance
 
 
 void setup(void) {
   // Keep the SD card inactive while working the display.
-  pinMode(SD_CS, INPUT_PULLUP);
-  pinMode(SS_PIN, INPUT_PULLUP);
-  pinMode(TFT_CS, INPUT_PULLUP);
-  pinMode(RST_PIN, OUTPUT);
+  pinMode(CS_SD, INPUT_PULLUP);
+  pinMode(CS_RFID, INPUT_PULLUP);
+  pinMode(CS_TFT, INPUT_PULLUP);
+  pinMode(RFID_RST, OUTPUT);
   delay(200);
-
-  tft.begin();
-  tft.fillScreen(ILI9341_BLUE);
-
-  Serial.begin(9600);
-  tft.setTextColor(ILI9341_RED);
-  tft.setTextSize(2);
+ Serial.begin(9600);  // Initialize serial communications with the PC
  
-digitalWrite(RST_PIN, LOW);
-  delay(200);
-  
-  tft.println(F("Init SD card..."));
-  while (!SD.begin(SD_CS)) {
+  tft.begin();
+    tft.fillScreen(ILI9341_BLACK);
+  tft.setTextColor(ILI9341_WHITE);
+  tft.setTextSize(2);
+  while (!SD.begin(CS_SD)) {
     tft.println(F("failed to access SD card!"));
     delay(2000);
   }
 }
 
 void loop() {
-  tft.fillScreen(ILI9341_GREEN); 
-  mfrc522.PCD_Init();   // Init MFRC522
-  if ( ! mfrc522.PICC_IsNewCardPresent()) {
+ // Hide the Display
+  tft.fillScreen(ILI9341_BLACK); 
+  
+//Check RFID  
+  mfrc522.PCD_Init();   // Wake RFID Board
+  
+ if ( ! mfrc522.PICC_IsNewCardPresent() || ! mfrc522.PICC_ReadCardSerial() ) {
+    return;
+  }
+  Serial.print(F("Card UID:"));
+  for (byte i = 0; i < mfrc522.uid.size; i++) {
+    Serial.print(mfrc522.uid.uidByte[i] < 0x10 ? " 0" : " ");
+    Serial.print(mfrc522.uid.uidByte[i], HEX);
+  } 
+  Serial.println();
+  
+  byte newUid[] = {0xFF,0xFF,0xFF,0x00};
+  if ( mfrc522.MIFARE_SetUid(newUid, (byte)4, true) ) {
+    Serial.println(F("Wrote new UID to card."));
+    newUid[3]++;
+  }
+
+    // Halt PICC and re-select it so DumpToSerial doesn't get confused
+  mfrc522.PICC_HaltA();
+  if ( ! mfrc522.PICC_IsNewCardPresent() || ! mfrc522.PICC_ReadCardSerial() ) {
     return;
   }
 
-  // Select one of the cards
-  if ( ! mfrc522.PICC_ReadCardSerial()) {
-    return;
-  }
-
- // Dump debug info about the card; PICC_HaltA() is automatically called
-  //mfrc522.PICC_DumpToSerial(&(mfrc522.uid));
-  digitalWrite(RST_PIN, LOW);
+    // Dump UID
+  Serial.print(F("Card New UID:"));
+  for (byte i = 0; i < mfrc522.uid.size; i++) {
+    Serial.print(mfrc522.uid.uidByte[i] < 0x10 ? " 0" : " ");
+    Serial.print(mfrc522.uid.uidByte[i], HEX);
+  } 
+  Serial.println();
+  
+// If a card is present : Disable RFID, and read appropriate content
+  digitalWrite(RFID_RST, LOW);
   delay(200);
+  
+  //Display Content for 5 seconds
   bmpDraw("woof.bmp", 0, 0);
   delay(5000);
 }
+
+
+
+
+/************************************************************/
+
 
 
 // This function opens a Windows Bitmap (BMP) file and

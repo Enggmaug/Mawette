@@ -39,7 +39,6 @@
 ILI9341_t3 tft = ILI9341_t3(CS_TFT, TFT_DC, TFT_RST, SPI_MOSI, SPI_SCLK, SPI_MISO);
 MFRC522 mfrc522(CS_RFID, RFID_RST);  // Create MFRC522 instance
 
-
 void setup(void) {
   // Keep the SD card inactive while working the display.
   pinMode(CS_SD, INPUT_PULLUP);
@@ -69,40 +68,30 @@ void loop() {
  if ( ! mfrc522.PICC_IsNewCardPresent() || ! mfrc522.PICC_ReadCardSerial() ) {
     return;
   }
-  Serial.print(F("Card UID:"));
-  for (byte i = 0; i < mfrc522.uid.size; i++) {
-    Serial.print(mfrc522.uid.uidByte[i] < 0x10 ? " 0" : " ");
-    Serial.print(mfrc522.uid.uidByte[i], HEX);
-  } 
-  Serial.println();
-  
-  byte newUid[] = {0xFF,0xFF,0xFF,0x00};
-  if ( mfrc522.MIFARE_SetUid(newUid, (byte)4, true) ) {
-    Serial.println(F("Wrote new UID to card."));
-    newUid[3]++;
-  }
 
-    // Halt PICC and re-select it so DumpToSerial doesn't get confused
-  mfrc522.PICC_HaltA();
-  if ( ! mfrc522.PICC_IsNewCardPresent() || ! mfrc522.PICC_ReadCardSerial() ) {
-    return;
-  }
+if(mfrc522.uid.size != 4)
+return;
 
-    // Dump UID
-  Serial.print(F("Card New UID:"));
+uint32_t CardID = 0;
+
   for (byte i = 0; i < mfrc522.uid.size; i++) {
-    Serial.print(mfrc522.uid.uidByte[i] < 0x10 ? " 0" : " ");
-    Serial.print(mfrc522.uid.uidByte[i], HEX);
+    CardID +=  mfrc522.uid.uidByte[i] << 8*i;
   } 
-  Serial.println();
   
 // If a card is present : Disable RFID, and read appropriate content
   digitalWrite(RFID_RST, LOW);
   delay(200);
+
+  char Filename[256];
+
+  sprintf(Filename, "%08x/pic.bmp",CardID,CardID);
+
+  Serial.println(Filename);
   
   //Display Content for 5 seconds
-  bmpDraw("woof.bmp", 0, 0);
-  delay(5000);
+  bmpDraw(Filename, 0, 0);
+  delay(2000);
+
 }
 
 

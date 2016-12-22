@@ -13,11 +13,17 @@
   MIT license, all text above must be included in any redistribution
  ****************************************************/
 
-
-#include <ILI9341_t3.h> // Hardware-specific library
+#include <Audio.h>
+#include <Wire.h>
 #include <SPI.h>
 #include <SD.h>
+#include <SerialFlash.h>
+
+
+
+#include <ILI9341_t3.h> // Hardware-specific library
 #include <MFRC522.h>
+
 
 // TFT display and SD card will share the hardware SPI interface.
 // Hardware SPI pins are specific to the Arduino board type and
@@ -39,7 +45,18 @@
 ILI9341_t3 tft = ILI9341_t3(CS_TFT, TFT_DC, TFT_RST, SPI_MOSI, SPI_SCLK, SPI_MISO);
 MFRC522 mfrc522(CS_RFID, RFID_RST);  // Create MFRC522 instance
 
+AudioPlaySdWav           playWav1;
+AudioOutputAnalog      audioOutput;
+AudioConnection          patchCord1(playWav1, 0, audioOutput, 0);
+AudioConnection          patchCord2(playWav1, 1, audioOutput, 1);
+AudioControlSGTL5000     sgtl5000_1;
+
+
 void setup(void) {
+    AudioMemory(8);
+    SPI.setMOSI(SPI_MOSI);
+    SPI.setSCK(SPI_SCLK);
+    
   // Keep the SD card inactive while working the display.
   pinMode(CS_SD, INPUT_PULLUP);
   pinMode(CS_RFID, INPUT_PULLUP);
@@ -84,18 +101,38 @@ uint32_t CardID = 0;
 
   char Filename[256];
 
-  sprintf(Filename, "%08x/pic.bmp",CardID,CardID);
+  sprintf(Filename, "%08x/pic.bmp",CardID);
 
   Serial.println(Filename);
   
   //Display Content for 5 seconds
   bmpDraw(Filename, 0, 0);
-  delay(2000);
+  sprintf(Filename, "%08x/WAVE.WAV",CardID);
+  playFile(Filename);
+
+  delay(500);
 
 }
 
 
+void playFile(const char *filename)
+{
+  // Start playing the file.  This sketch continues to
+  // run while the file plays.
+  playWav1.play(filename);
 
+  // A brief delay for the library read WAV info
+  delay(5);
+
+  // Simply wait for the file to finish playing.
+  while (playWav1.isPlaying()) {
+    // uncomment these lines if you audio shield
+    // has the optional volume pot soldered
+    //float vol = analogRead(15);
+    //vol = vol / 1024;
+    // sgtl5000_1.volume(vol);
+  }
+}
 
 /************************************************************/
 

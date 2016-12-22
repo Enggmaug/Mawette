@@ -1,158 +1,212 @@
-/***************************************************
-  This is our Bitmap drawing example for the Adafruit ILI9341 Breakout and Shield
-  ----> http://www.adafruit.com/products/1651
-
-  Check out the links above for our tutorials and wiring diagrams
-  These displays use SPI to communicate, 4 or 5 pins are required to
-  interface (RST is optional)
-  Adafruit invests time and resources providing this open source code,
-  please support Adafruit and open-source hardware by purchasing
-  products from Adafruit!
-
-  Written by Limor Fried/Ladyada for Adafruit Industries.
-  MIT license, all text above must be included in any redistribution
- ****************************************************/
-
+/* ---------------- INCLUDES -------------------- */
 #include <Audio.h>
-#include <Wire.h>
+#include <Wire.h>       // Nécessaire ?
 #include <SPI.h>
 #include <SD.h>
-#include <SerialFlash.h>
-
-
-
-#include <ILI9341_t3.h> // Hardware-specific library
+#include <SerialFlash.h>// Nécessaire ?
+#include <ILI9341_t3.h>
 #include <MFRC522.h>
 
 
-// TFT display and SD card will share the hardware SPI interface.
-// Hardware SPI pins are specific to the Arduino board type and
-// cannot be remapped to alternate pins.  For Arduino Uno,
-// Duemilanove, etc., pin 11 = MOSI, pin 12 = MISO, pin 13 = SCK.
-
-#define TFT_DC      15
-#define CS_TFT      10
-#define TFT_RST     4  // 255 = unused, connect to 3.3V
+/* ---------------- PIN DEFINES ----------------- */
+//SPI
 #define SPI_MOSI    11
 #define SPI_SCLK    13
 #define SPI_MISO    12
 
-#define RFID_RST         17          // Configurable, see typical pin layout above
-#define CS_RFID          20         // Configurable, see typical pin layout above
+//TFT
+#define TFT_DC      15
+#define TFT_CS      10
+#define TFT_RST     4
+#define TFT_LED_PWR 19
 
-#define CS_SD 9
+//RFID
+#define RFID_RST    17
+#define RFID_CS     20
 
-ILI9341_t3 tft = ILI9341_t3(CS_TFT, TFT_DC, TFT_RST, SPI_MOSI, SPI_SCLK, SPI_MISO);
-MFRC522 mfrc522(CS_RFID, RFID_RST);  // Create MFRC522 instance
+//SD
+#define SD_CS       9
 
-AudioPlaySdWav           playWav1;
-AudioOutputAnalog      audioOutput;
-AudioConnection          patchCord1(playWav1, 0, audioOutput, 0);
-AudioConnection          patchCord2(playWav1, 1, audioOutput, 1);
-AudioControlSGTL5000     sgtl5000_1;
+//AUDIO
+#define AUDIO_PWR   -1
 
+/* --------------- OTHER DEFINES ---------------- */
+//Buffer for BMP
+#define BUFFPIXEL 240
 
-void setup(void) {
-    AudioMemory(8);
-    SPI.setMOSI(SPI_MOSI);
-    SPI.setSCK(SPI_SCLK);
-    
-  // Keep the SD card inactive while working the display.
-  pinMode(CS_SD, INPUT_PULLUP);
-  pinMode(CS_RFID, INPUT_PULLUP);
-  pinMode(CS_TFT, INPUT_PULLUP);
-  pinMode(RFID_RST, OUTPUT);
-  delay(200);
- Serial.begin(9600);  // Initialize serial communications with the PC
+/* --------------- Power Macros ----------------- */
+#define AudioOff() digitalWrite(AUDIO_PWR,HIGH)
+#define AudioOn()  digitalWrite(AUDIO_PWR,LOW)
+#define RFIDOff()  digitalWrite(RFID_RST,LOW)
+#define RFIDOn()   mfrc522.PCD_Init()
+#define TFTOff()   digitalWrite(TFT_LED_PWR,LOW)
+#define TFTOn()    digitalWrite(TFT_LED_PWR,HIGH)
+
+/* ---------- Globals (Objects and Vars)--------- */ 
+//TFT
+ILI9341_t3 tft = ILI9341_t3(TFT_CS, TFT_DC, TFT_RST, SPI_MOSI, SPI_SCLK, SPI_MISO);
+
+//RFID
+MFRC522 mfrc522(RFID_CS, RFID_RST);
+
+//Audio
+AudioPlaySdWav           playSdWav1;
+AudioMixer4              mixer1;
+AudioOutputAnalog        dac1;
+AudioConnection          patchCord1(playSdWav1, 0, mixer1, 0);
+AudioConnection          patchCord2(mixer1, dac1);
+
+ enum StateMachine {INIT, WAIT_RFID, GOTO_SLEEP, WAKE_UP, READ_SD};
+ StateMachine State= INIT;
+ uint32_t CardID;
  
+/**************************************************/
+/*                 FONCTIONS                      */
+/**************************************************/
+
+//==================================================
+// Setup 
+void setup(void) {
+// All Inactive pendant le setup
+  pinMode(SD_CS, INPUT_PULLUP);
+  pinMode(RFID_CS, INPUT_PULLUP);
+  pinMode(TFT_CS, INPUT_PULLUP);
+  pinMode(RFID_RST, OUTPUT);
+  pinMode(TFT_LED_PWR, OUTPUT);
+  pinMode(AUDIO_PWR, OUTPUT);
+  AudioOff();
+  RFIDOff();
+  TFTOff();
+
+//Pour Debug  
+Serial.begin(9600);
+
+//Setup SPI
+  SPI.setMOSI(SPI_MOSI);
+  SPI.setMISO(SPI_MISO);
+  SPI.setSCK(SPI_SCLK);
+
+//Setup Audio
+  AudioMemory(8);
+  delay(200);
+  mixer1.gain(0,0.01);
+
+//Setup TFT 
   tft.begin();
-    tft.fillScreen(ILI9341_BLACK);
+  tft.fillScreen(ILI9341_BLACK);
   tft.setTextColor(ILI9341_WHITE);
   tft.setTextSize(2);
-  while (!SD.begin(CS_SD)) {
+    
+//Setup SDCard  
+  while (!SD.begin(SD_CS)) {
+    TFTOn();
     tft.println(F("failed to access SD card!"));
     delay(2000);
   }
 }
 
-void loop() {
- // Hide the Display
-  tft.fillScreen(ILI9341_BLACK); 
+
+//==================================================
+// Loop Function 
+void loop(void) {
+ 
+ switch (State)
+ {
   
-//Check RFID  
-  mfrc522.PCD_Init();   // Wake RFID Board
+// --- INIT 
+  case INIT : 
+  Serial.println("INIT");
+    // Hide the Display
+    tft.fillScreen(ILI9341_BLACK);
+    TFTOff(); 
+
+    // Enable RFID
+    CardID = 0;
+    RFIDOn();
+    State = WAIT_RFID;    
+  Serial.println("WAIT_RFID");
+  break;
   
- if ( ! mfrc522.PICC_IsNewCardPresent() || ! mfrc522.PICC_ReadCardSerial() ) {
-    return;
-  }
-
-if(mfrc522.uid.size != 4)
-return;
-
-uint32_t CardID = 0;
-
-  for (byte i = 0; i < mfrc522.uid.size; i++) {
-    CardID +=  mfrc522.uid.uidByte[i] << 8*i;
-  } 
   
-// If a card is present : Disable RFID, and read appropriate content
-  digitalWrite(RFID_RST, LOW);
-  delay(200);
+// --- WAIT_RFID  
+  case WAIT_RFID :
+    //Gestion Sleep ICI (verif millis si pas sortie de Wakeup, sinon juste une fois)
+    
+    //
+    if ( ! mfrc522.PICC_IsNewCardPresent() || ! mfrc522.PICC_ReadCardSerial() ) {
+      return;
+    }
+    if(mfrc522.uid.size != 4)
+      return;
 
-  char Filename[256];
-
-  sprintf(Filename, "%08x/pic.bmp",CardID);
-
-  Serial.println(Filename);
+    Serial.println("RFID Read");    
+    for (byte i = 0; i < mfrc522.uid.size; i++)
+      CardID +=  mfrc522.uid.uidByte[i] << 8*i;
+    
+    RFIDOff();
+    State = READ_SD;
+    delay(200);
+  break;
   
-  //Display Content for 5 seconds
-  bmpDraw(Filename, 0, 0);
-  sprintf(Filename, "%08x/WAVE.WAV",CardID);
-  playFile(Filename);
+  
+// --- GOTO_SLEEP 
+  Serial.println("GOTO_SLEEP");
+  case GOTO_SLEEP : 
+    AudioOff();
+    RFIDOff();
+    TFTOff();
+    //Ajout IT Timer pour WakeUp
+  break;
+  
+  
+// --- WAKE_UP  
+  Serial.println("WAKE_UP");
+  case WAKE_UP : 
+    State = INIT;
+  break;
+  
+  
+// --- READ_SD 
+  Serial.println("READ_SD"); 
+  case READ_SD :
+    char Filename[256];
 
-  delay(500);
+    sprintf(Filename, "%08x/pic.bmp",CardID);
+  //Read BMP File
+    Serial.println(Filename);
+    bmpDraw(Filename, 0, 0);
 
+  //read WAV File
+    sprintf(Filename, "%08x/WAVE.WAV",CardID);
+    if (playSdWav1.play(Filename))
+    {
+      Serial.println(Filename);
+      AudioOn();
+      // A brief delay for the library read WAV info
+      delay(5);
+      // Simply wait for the file to finish playing.
+      while (playSdWav1.isPlaying()) {}
+      
+    //Turn Off Audio and TFT, then wait for New RFID
+      AudioOff();
+    }
+    else
+    {
+          Serial.println("File not Found");
+      delay(3000);
+    }
+    TFTOff();
+    State = INIT;
+  break;
+  
+  
+// --- default  
+  Serial.println("default");
+  default : 
+    State = INIT;
+  break;
+ }
 }
-
-
-void playFile(const char *filename)
-{
-  // Start playing the file.  This sketch continues to
-  // run while the file plays.
-  playWav1.play(filename);
-
-  // A brief delay for the library read WAV info
-  delay(5);
-
-  // Simply wait for the file to finish playing.
-  while (playWav1.isPlaying()) {
-    // uncomment these lines if you audio shield
-    // has the optional volume pot soldered
-    //float vol = analogRead(15);
-    //vol = vol / 1024;
-    // sgtl5000_1.volume(vol);
-  }
-}
-
-/************************************************************/
-
-
-
-// This function opens a Windows Bitmap (BMP) file and
-// displays it at the given coordinates.  It's sped up
-// by reading many pixels worth of data at a time
-// (rather than pixel by pixel).  Increasing the buffer
-// size takes more of the Arduino's precious RAM but
-// makes loading a little faster.  20 pixels seems a
-// good balance for tiny AVR chips.
-
-// Larger buffers are slightly more efficient, but if
-// the buffer is too large, extra data is read unnecessarily.
-// For example, if the image is 240 pixels wide, a 100
-// pixel buffer will read 3 groups of 100 pixels.  The
-// last 60 pixels from the 3rd read may not be used.
-
-#define BUFFPIXEL 240
 
 
 //===========================================================
@@ -183,7 +237,7 @@ void bmpDraw(const char *filename, uint8_t x, uint16_t y) {
     tft.print(F("File not found"));
     return;
   }
-
+  
   // Parse BMP header
   if(read16(bmpFile) == 0x4D42) { // BMP signature
     read32(bmpFile);
@@ -248,6 +302,7 @@ void bmpDraw(const char *filename, uint8_t x, uint16_t y) {
           } // end pixel
         } // end scanline
         tft.writeRect(0, 0, w, h, (uint16_t *)ImageData);
+        TFTOn();
 
       } // end goodBmp
     }
@@ -258,11 +313,11 @@ void bmpDraw(const char *filename, uint8_t x, uint16_t y) {
 }
 
 
-
+//==================================================
+// read16 and  read32
 // These read 16- and 32-bit types from the SD card file.
 // BMP data is stored little-endian, Arduino is little-endian too.
 // May need to reverse subscript order if porting elsewhere.
-
 uint16_t read16(File &f) {
   uint16_t result;
   ((uint8_t *)&result)[0] = f.read(); // LSB
@@ -278,3 +333,4 @@ uint32_t read32(File &f) {
   ((uint8_t *)&result)[3] = f.read(); // MSB
   return result;
 }
+

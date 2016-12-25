@@ -28,15 +28,15 @@
 #define SD_CS       9
 
 //AUDIO
-#define AUDIO_PWR   -1
+#define AUDIO_PWR   0
 
 /* --------------- OTHER DEFINES ---------------- */
 //Buffer for BMP
 #define BUFFPIXEL 240
 
 /* --------------- Power Macros ----------------- */
-#define AudioOff() digitalWrite(AUDIO_PWR,HIGH)
-#define AudioOn()  digitalWrite(AUDIO_PWR,LOW)
+#define AudioOff() digitalWrite(AUDIO_PWR,LOW)
+#define AudioOn()  digitalWrite(AUDIO_PWR,HIGH)
 #define RFIDOff()  digitalWrite(RFID_RST,LOW)
 #define RFIDOn()   mfrc522.PCD_Init()
 #define TFTOff()   digitalWrite(TFT_LED_PWR,LOW)
@@ -89,7 +89,7 @@ Serial.begin(9600);
 //Setup Audio
   AudioMemory(8);
   delay(200);
-  mixer1.gain(0,0.01);
+  mixer1.gain(0,0.3);
 
 //Setup TFT 
   tft.begin();
@@ -178,23 +178,27 @@ void loop(void) {
 
   //read WAV File
     sprintf(Filename, "%08x/WAVE.WAV",CardID);
-    if (playSdWav1.play(Filename))
+    if (SD.exists(Filename))
     {
       Serial.println(Filename);
       AudioOn();
+      delay(5);
+    }      
+    if (playSdWav1.play(Filename))
+    {
       // A brief delay for the library read WAV info
       delay(5);
       // Simply wait for the file to finish playing.
       while (playSdWav1.isPlaying()) {}
-      
-    //Turn Off Audio and TFT, then wait for New RFID
-      AudioOff();
     }
+
     else
     {
           Serial.println("File not Found");
-      delay(3000);
     }
+    delay(2000);
+  //Turn Off Audio and TFT, then wait for New RFID
+    AudioOff();
     TFTOff();
     State = INIT;
   break;

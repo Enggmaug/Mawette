@@ -95,6 +95,7 @@ Serial.begin(9600);
   tft.fillScreen(ILI9341_BLACK);
   tft.setTextColor(ILI9341_WHITE);
   tft.setTextSize(2);
+  tft.setRotation(2);
     
 //Setup SDCard  
   while (!SD.begin(SD_CS)) {

@@ -181,7 +181,7 @@ void loop(void) {
     {
       Serial.println(Filename);
       AudioOn();
-      delay(5);
+      delay(500);
     }      
     if (playSdWav1.play(Filename))
     {

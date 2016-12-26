@@ -1,9 +1,7 @@
 /* ---------------- INCLUDES -------------------- */
 #include <Audio.h>
-#include <Wire.h>       // Nécessaire ?
 #include <SPI.h>
 #include <SD.h>
-#include <SerialFlash.h>// Nécessaire ?
 #include <ILI9341_t3.h>
 #include <MFRC522.h>
 
@@ -56,6 +54,7 @@ AudioOutputAnalog        dac1;
 AudioConnection          patchCord1(playSdWav1, 0, mixer1, 0);
 AudioConnection          patchCord2(mixer1, dac1);
 
+//Autres
  enum StateMachine {INIT, WAIT_RFID, GOTO_SLEEP, WAKE_UP, READ_SD};
  StateMachine State= INIT;
  uint32_t CardID;

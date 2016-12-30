@@ -171,30 +171,29 @@ void loop(void) {
   case READ_SD :
     char Filename[256];
 
+    sprintf(Filename, "%08x",CardID);
+    Serial.println(Filename);
+    
     sprintf(Filename, "%08x/pic.bmp",CardID);
   //Read BMP File
-    Serial.println(Filename);
-    bmpDraw(Filename, 0, 0);
+    if (SD.exists(Filename))
+    {
+      bmpDraw(Filename, 0, 0);
+    }
 
   //read WAV File
     sprintf(Filename, "%08x/WAVE.WAV",CardID);
     if (SD.exists(Filename))
     {
-      Serial.println(Filename);
-      AudioOn();
-      delay(500);
-    }      
-    if (playSdWav1.play(Filename))
-    {
-      // A brief delay for the library read WAV info
-      delay(5);
-      // Simply wait for the file to finish playing.
-      while (playSdWav1.isPlaying()) {}
-    }
-
-    else
-    {
-          Serial.println("File not Found");
+        AudioOn();
+        delay(500);
+      if (playSdWav1.play(Filename))
+      {
+        // A brief delay for the library read WAV info
+        delay(5);
+        // Simply wait for the file to finish playing.
+        while (playSdWav1.isPlaying()) {}
+      }
     }
     delay(2000);
   //Turn Off Audio and TFT, then wait for New RFID
@@ -237,11 +236,8 @@ void bmpDraw(const char *filename, uint8_t x, uint16_t y) {
 
   // Open requested file on SD card
   if (!(bmpFile = SD.open(filename))) {
-    tft.setCursor(0,0);
-    tft.print(F("File not found"));
     return;
   }
-  
   // Parse BMP header
   if(read16(bmpFile) == 0x4D42) { // BMP signature
     read32(bmpFile);

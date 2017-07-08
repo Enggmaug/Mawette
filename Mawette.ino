@@ -26,7 +26,7 @@
 #define SD_CS       9
 
 //AUDIO
-#define AUDIO_PWR   0
+#define AUDIO_PWR   39
 
 /* --------------- OTHER DEFINES ---------------- */
 //Buffer for BMP
@@ -171,10 +171,10 @@ void loop(void) {
   case READ_SD :
     char Filename[256];
 
-    sprintf(Filename, "%08x",CardID);
+    sprintf(Filename, "%08lx",CardID);
     Serial.println(Filename);
     
-    sprintf(Filename, "%08x/pic.bmp",CardID);
+    sprintf(Filename, "%08lx/pic.bmp",CardID);
   //Read BMP File
     if (SD.exists(Filename))
     {
@@ -182,7 +182,7 @@ void loop(void) {
     }
 
   //read WAV File
-    sprintf(Filename, "%08x/WAVE.WAV",CardID);
+    sprintf(Filename, "%08lx/WAVE.WAV",CardID);
     if (SD.exists(Filename))
     {
         AudioOn();
@@ -227,7 +227,7 @@ void bmpDraw(const char *filename, uint8_t x, uint16_t y) {
   boolean  flip    = true;        // BMP is stored bottom-to-top
   int      w, h, row, col;
   uint8_t  r, g, b;
-  uint32_t pos = 0, startTime = millis();
+  uint32_t pos = 0;
 
  // uint16_t awColors[320];  // hold colors for one row at a time...
   uint16_t ImageData[320][240] = {0xAA55};
